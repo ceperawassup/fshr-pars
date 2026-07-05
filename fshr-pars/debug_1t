@@ -1,0 +1,50 @@
+import asyncio
+from playwright.async_api import async_playwright
+from bs4 import BeautifulSoup
+
+TOURNAMENT_URL = 'https://ratings.ruchess.ru/tournaments/243749'
+
+async def main():
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        page = await browser.new_page()
+        await page.goto(TOURNAMENT_URL, wait_until='networkidle')
+        # Подождём подольше, чтобы таблица точно отрисовалась
+        await page.wait_for_timeout(5000)
+        await page.screenshot(path='debug_tournament.png')
+        print("Скриншот сохранён: debug_tournament.png")
+
+        html = await page.content()
+        soup = BeautifulSoup(html, 'html.parser')
+
+        # Ищем таблицу с классом table-bordered
+        table = soup.find('table', class_='table-bordered')
+        if not table:
+            print("Таблица с классом table-bordered не найдена")
+            # На всякий случай выведем все таблицы
+            all_tables = soup.find_all('table')
+            print(f"Всего таблиц: {len(all_tables)}")
+            for i, t in enumerate(all_tables):
+                print(f"Таблица {i}: class={t.get('class')}")
+            await browser.close()
+            return
+
+        rows = table.find_all('tr')[1:]  # пропускаем заголовок
+        print(f"Найдено строк (игроков): {len(rows)}")
+        for idx, row in enumerate(rows[:5]):  # покажем первые 5
+            cells = row.find_all('td')
+            if not cells:
+                continue
+            # Выводим текст ячеек
+            texts = [cell.get_text(strip=True) for cell in cells]
+            print(f"Строка {idx}: {texts}")
+            # Проверим наличие ссылки в 3-й ячейке (индекс 2)
+            name_cell = cells[2] if len(cells) > 2 else None
+            if name_cell:
+                links = name_cell.find_all('a')
+                for a in links:
+                    print(f"  Ссылка: href={a.get('href')}, текст={a.get_text(strip=True)}")
+        await browser.close()
+
+if __name__ == '__main__':
+    asyncio.run(main())
